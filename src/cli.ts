@@ -7,7 +7,7 @@
 // `agent add` and `agent rotate` print the new token on stdout and nothing
 // else, so scripts can capture it; every other message goes to stderr.
 
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { copyFileSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { parseArgs } from "node:util";
@@ -87,18 +87,22 @@ const TAILSCALE_CANDIDATES = [
 // Windows can't exec a .cmd or .bat directly, so those go through cmd.exe.
 // The /S form with outer quotes is the one whose strip-quote rules keep the
 // inner path quoted, so spaces in it survive; windowsVerbatimArguments stops
-// Node from adding its own \\-escaped quoting on top.
+// Node from adding its own \-escaped quoting on top.
 function runCandidate(file: string, args: string[], timeoutMs: number): string {
-  if (process.platform === "win32" && /\.(cmd|bat)$/i.test(file)) {
-    const com = process.env.ComSpec ?? "cmd.exe";
-    return execFileSync(com, ["/d", "/s", "/c", `""${file}" ${args.join(" ")}"`], {
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "ignore"],
-      timeout: timeoutMs,
-      windowsVerbatimArguments: true,
-    });
-  }
-  return execFileSync(file, args, { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], timeout: timeoutMs });
+  const result =
+    process.platform === "win32" && /\.(cmd|bat)$/i.test(file)
+      ? spawnSync(process.env.ComSpec ?? "cmd.exe", ["/d", "/s", "/c", `""${file}" ${args.join(" ")}"`], {
+          encoding: "utf8",
+          stdio: ["ignore", "pipe", "ignore"],
+          timeout: timeoutMs,
+          windowsVerbatimArguments: true,
+        })
+      : spawnSync(file, args, { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], timeout: timeoutMs });
+  // A failure throws, like execFileSync would, so tailscaleIdentity moves on
+  // to the next candidate.
+  if (result.error) throw result.error;
+  if (result.status !== 0) throw new Error(`exited with ${result.status ?? `signal ${result.signal}`}`);
+  return result.stdout;
 }
 
 /** This machine's tailnet name and Tailscale login, from `tailscale status --json`. */
