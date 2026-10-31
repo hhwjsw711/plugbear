@@ -62,11 +62,13 @@ if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
 }
 
 Say 'Installing the gateway on this computer'
-$deployArguments = @('-SkipChecks', '-AllowDirty')
-if ($Tailscale) { $deployArguments += @('-Mode', 'tailscale') }
-if ($AdminLogin) { $deployArguments += @('-AdminLogin', $AdminLogin) }
-if ($PublicUrl) { $deployArguments += @('-PublicUrl', $PublicUrl) }
-if ($Owner) { $deployArguments += @('-Owner', $Owner) }
+# Splatted by name: an array splat binds positionally, and the switch names
+# would land in -Mode and -AdminLogin as strings instead.
+$deployArguments = @{ SkipChecks = $true; AllowDirty = $true }
+if ($Tailscale) { $deployArguments['Mode'] = 'tailscale' }
+if ($AdminLogin) { $deployArguments['AdminLogin'] = $AdminLogin }
+if ($PublicUrl) { $deployArguments['PublicUrl'] = $PublicUrl }
+if ($Owner) { $deployArguments['Owner'] = $Owner }
 & (Join-Path $Repo 'scripts\deploy.ps1') @deployArguments
 if ($LASTEXITCODE -ne 0) {
   Write-Output "install: the deploy failed, so the agents weren't wired." | Out-Host
