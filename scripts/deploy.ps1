@@ -190,26 +190,34 @@ function Restart-Gateway([string]$TaskLabel, [int]$GatewayPort) {
     Unregister-ScheduledTask -TaskName $TaskLabel -Confirm:$false
     $task = $null
   }
+  # The hidden-run script is rewritten on every deploy, so a fix to it
+  # reaches an install whose task is already registered. Its comment lines
+  # start with Rem (VBScript's other comment form, which needs no quote
+  # doubling), and the Run line is built into one string first: written as
+  # 'a' + $b + 'c' inside the array literal, PowerShell 5.1 delivers three
+  # elements instead of one, which once wrote a script that couldn't parse
+  # and popped a Windows Script Host error dialog (checked 31 Oct 2026).
+  $node = Join-Path $Data 'bin\node.exe'
+  $cli = Join-Path $Data 'app\dist\connectors.mjs'
+  # NODE_ENV=production is what lets the gateway report its own bugs to
+  # Sentry if settings.json has a DSN (src/sentry.ts); only this task sets
+  # it, so tests and dev runs never report.
+  $command = 'set "NODE_ENV=production"&& ' + '"' + $node + '" --max-old-space-size=384 "' + $cli + '" serve --home "' + $Data + '" >> "' + $LogFile + '" 2>&1'
+  $runLine = '  shell.Run "cmd.exe /d /c ' + ($command -replace '"', '""') + '", 0, True'
+  $body = @(
+    'Rem Written by scripts/deploy.ps1. Runs the gateway with no console',
+    'Rem window and brings it back whatever way it stops. Stopping the',
+    'Rem scheduled task stops this script and the gateway with it.',
+    'Dim shell',
+    'Set shell = CreateObject("WScript.Shell")',
+    'Do',
+    $runLine,
+    '  WScript.Sleep 5000',
+    'Loop'
+  ) -join "`r`n"
+  [System.IO.File]::WriteAllText($HiddenScript, $body, (New-Object System.Text.ASCIIEncoding))
   if (-not $task) {
     Say "Registering the scheduled task $TaskLabel"
-    $node = Join-Path $Data 'bin\node.exe'
-    $cli = Join-Path $Data 'app\dist\connectors.mjs'
-    # NODE_ENV=production is what lets the gateway report its own bugs to
-    # Sentry if settings.json has a DSN (src/sentry.ts); only this task sets
-    # it, so tests and dev runs never report.
-    $command = 'set "NODE_ENV=production"&& ' + '"' + $node + '" --max-old-space-size=384 "' + $cli + '" serve --home "' + $Data + '" >> "' + $LogFile + '" 2>&1'
-    $body = @(
-      'Written by scripts/deploy.ps1. Runs the gateway with no console',
-      'window and brings it back whatever way it stops. Stopping the',
-      'scheduled task stops this script and the gateway with it.',
-      'Dim shell',
-      'Set shell = CreateObject("WScript.Shell")',
-      'Do',
-      '  shell.Run "cmd.exe /d /c ' + ($command -replace '"', '""') + '", 0, True',
-      '  WScript.Sleep 5000',
-      'Loop'
-    ) -join "`r`n"
-    [System.IO.File]::WriteAllText($HiddenScript, $body, (New-Object System.Text.ASCIIEncoding))
     $action = New-ScheduledTaskAction -Execute $Wscript -Argument ('"' + $HiddenScript + '"') -WorkingDirectory $Data
     $trigger = New-ScheduledTaskTrigger -AtLogOn -User ([System.Security.Principal.WindowsIdentity]::GetCurrent().Name)
     $settings = New-ScheduledTaskSettingsSet -RestartCount 999 -RestartInterval (New-TimeSpan -Minutes 1) -ExecutionTimeLimit (New-TimeSpan -Seconds 0) -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable
