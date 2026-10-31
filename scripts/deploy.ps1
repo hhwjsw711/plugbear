@@ -187,7 +187,10 @@ function Restart-Gateway([string]$TaskLabel, [int]$GatewayPort) {
     # it, so tests and dev runs never report.
     $command = 'set "NODE_ENV=production"&& ' + '"' + $node + '" --max-old-space-size=384 "' + $cli + '" serve --home "' + $Data + '" >> "' + $LogFile + '" 2>&1'
     $action = New-ScheduledTaskAction -Execute $env:ComSpec -Argument "/d /c $command" -WorkingDirectory $Data
-    $trigger = New-ScheduledTaskTrigger -AtLogOn
+    # The trigger is this user's logon only, like the Mac script's
+    # LaunchAgent: a trigger for any user's logon won't register without an
+    # elevated shell.
+    $trigger = New-ScheduledTaskTrigger -AtLogOn -User ([System.Security.Principal.WindowsIdentity]::GetCurrent().Name)
     $settings = New-ScheduledTaskSettingsSet -RestartCount 999 -RestartInterval (New-TimeSpan -Minutes 1) -ExecutionTimeLimit (New-TimeSpan -Seconds 0) -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable
     $principal = New-ScheduledTaskPrincipal -UserId ([System.Security.Principal.WindowsIdentity]::GetCurrent().Name) -LogonType Interactive
     Register-ScheduledTask -TaskName $TaskLabel -Action $action -Trigger $trigger -Settings $settings -Principal $principal | Out-Null
