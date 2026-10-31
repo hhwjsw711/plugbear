@@ -270,7 +270,7 @@ if ($Rollback) {
 # script runs npx through cmd.exe, which can't start a .ps1 and would open
 # it in whatever .ps1 files are associated with (Notepad, by default)
 # instead of building anything.
-$Npx = (Get-Command npx -CommandType Application -ErrorAction SilentlyContinue).Source
+$Npx = (Get-Command npx -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1).Source
 if (-not $Npx) { Die "Install Node.js (with npm) first, for example from https://nodejs.org. It's only used to build." }
 
 $dirty = $false
@@ -461,7 +461,7 @@ if (-not $NoPublish) {
     Write-Output 'Local mode, so tailscale serve isn''t needed.'
   } else {
     $tailscale = Join-Path $env:ProgramFiles 'Tailscale\tailscale.exe'
-    if (-not (Test-Path $tailscale)) { $tailscale = (Get-Command tailscale -ErrorAction SilentlyContinue).Source }
+    if (-not (Test-Path $tailscale)) {     $tailscale = (Get-Command tailscale -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1).Source }
     if (-not $tailscale) {
       Write-Output 'Tailscale CLI not found; skipping tailscale serve.' | Out-Host
     } else {

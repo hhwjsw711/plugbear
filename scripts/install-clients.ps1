@@ -195,8 +195,10 @@ function Invoke-ConnectorsCli {
 $Node = $null
 if ($env:CONNECTORS_NODE) {
   $Node = $env:CONNECTORS_NODE
-} elseif (Get-Command node -ErrorAction SilentlyContinue) {
-  $Node = (Get-Command node).Source
+} elseif (Get-Command node -CommandType Application -ErrorAction SilentlyContinue) {
+  # One result: several node.exe's on PATH would otherwise arrive here as
+  # an array and land whole on the command line.
+  $Node = (Get-Command node -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1).Source
 } else {
   $pinned = Get-ChildItem -Path (Join-Path $DataDir 'node') -Filter 'node.exe' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
   if ($pinned) { $Node = $pinned.FullName }
@@ -406,9 +408,10 @@ function Get-MissingClient {
 }
 
 function Find-ClientCommand([string]$Name) {
-  # Application type, so a .ps1 shim never gets picked: what this returns is
+  # Application type and one result, so a .ps1 shim never gets picked and an
+  # array of matches never reaches the command line: what this returns is
   # run through cmd.exe or CreateProcess, neither of which can start a .ps1.
-  $command = Get-Command $Name -CommandType Application -ErrorAction SilentlyContinue
+  $command = Get-Command $Name -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
   if ($command) { return $command.Source }
   return $null
 }
