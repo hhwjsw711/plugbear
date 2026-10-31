@@ -406,7 +406,9 @@ function Get-MissingClient {
 }
 
 function Find-ClientCommand([string]$Name) {
-  $command = Get-Command $Name -ErrorAction SilentlyContinue
+  # Application type, so a .ps1 shim never gets picked: what this returns is
+  # run through cmd.exe or CreateProcess, neither of which can start a .ps1.
+  $command = Get-Command $Name -CommandType Application -ErrorAction SilentlyContinue
   if ($command) { return $command.Source }
   return $null
 }

@@ -265,8 +265,12 @@ if ($Rollback) {
 # --- Build -------------------------------------------------------------------------
 
 # npx, on whatever Node the machine has, only to build: the gateway runs on
-# the Node ops/node.json pins, downloaded and checked below.
-$Npx = (Get-Command npx -ErrorAction SilentlyContinue).Source
+# the Node ops/node.json pins, downloaded and checked below. Application
+# type only, so a PowerShell shim on PATH (npx.ps1) is passed over: this
+# script runs npx through cmd.exe, which can't start a .ps1 and would open
+# it in whatever .ps1 files are associated with (Notepad, by default)
+# instead of building anything.
+$Npx = (Get-Command npx -CommandType Application -ErrorAction SilentlyContinue).Source
 if (-not $Npx) { Die "Install Node.js (with npm) first, for example from https://nodejs.org. It's only used to build." }
 
 $dirty = $false
