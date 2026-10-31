@@ -123,20 +123,21 @@ function agentStep(agent: SetupAgentInput, mcpUrl: string): SetupStep {
     };
   }
   const href = `${README_URL}#wire-your-agents`;
-  // An agent with a client is wired by install-clients.sh, from the repo
-  // on the Mac the agent runs on; one without gets a token by hand.
+  // An agent with a client is wired by install-clients, from the repo
+  // on the machine the agent runs on; one without gets a token by hand.
+  const installClients = process.platform === "win32" ? "scripts\\install-clients.ps1" : "scripts/install-clients.sh";
   const action: SetupAction = agent.clientType
     ? {
         kind: "command",
         label: "Wire",
-        note: "In your PlugBear folder, on the Mac this agent runs on:",
-        command: `scripts/install-clients.sh --only ${agent.id}`,
+        note: "In your PlugBear folder, on the machine this agent runs on:",
+        command: `${installClients} --only ${agent.id}`,
         href,
       }
     : {
         kind: "command",
         label: "Wire",
-        note: `On the gateway's Mac, then point the client at ${mcpUrl} with the token as a Bearer header:`,
+        note: `On the gateway's machine, then point the client at ${mcpUrl} with the token as a Bearer header:`,
         command: `connectors agent add ${agent.id}`,
         href,
       };

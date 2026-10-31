@@ -108,7 +108,11 @@ function setup() {
 
 const mode = (path: string) => statSync(path).mode & 0o777;
 
-describe("install-clients.sh", () => {
+// The shell script runs on macOS and Linux; Windows has its own PowerShell
+// port, scripts/install-clients.ps1, covered by install-clients-win.test.ts.
+const describeShell = process.platform === "win32" ? describe.skip : describe;
+
+describeShell("install-clients.sh", () => {
   const t = setup();
   const first = t.run([]);
 

@@ -313,7 +313,7 @@ export function createApp(deps: AppDeps): Hono<Env> {
   const localCheck = (c: Context<Env>): Response | undefined => {
     const host = c.req.header("host")?.toLowerCase() ?? "";
     if (!localHosts.has(host)) return c.text(`These pages only answer at ${deps.publicUrl}\n`, 403);
-    if (!loopbackAddress(c.env?.incoming?.socket.remoteAddress)) return c.text("These pages only answer on this Mac.\n", 403);
+    if (!loopbackAddress(c.env?.incoming?.socket.remoteAddress)) return c.text("These pages only answer on this machine.\n", 403);
     return undefined;
   };
 
@@ -328,7 +328,7 @@ export function createApp(deps: AppDeps): Hono<Env> {
         c,
         messagePage(
           "Open this page from Terminal",
-          `This browser isn't signed in to PlugBear yet. Run "connectors open ${path}" on this Mac, which opens it signed in.`,
+          `This browser isn't signed in to PlugBear yet. Run "connectors open ${path}" on this machine, which opens it signed in.`,
         ),
         401,
       );

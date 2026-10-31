@@ -59,8 +59,11 @@ describe("connectors CLI", () => {
     assert.ok(!added.stderr.includes(token));
     const secretsFile = join(root, "data", "secrets", "agents.json");
     assert.ok(!readFileSync(secretsFile, "utf8").includes(token));
-    assert.equal(statSync(secretsFile).mode & 0o777, 0o600);
-    assert.equal(statSync(join(root, "data", "secrets")).mode & 0o777, 0o700);
+    // Windows ignores the mode bits; the install script uses an ACL there.
+    if (process.platform !== "win32") {
+      assert.equal(statSync(secretsFile).mode & 0o777, 0o600);
+      assert.equal(statSync(join(root, "data", "secrets")).mode & 0o777, 0o700);
+    }
 
     const again = run("agent", "add", "codex");
     assert.equal(again.status, 3);
@@ -133,7 +136,7 @@ describe("connectors CLI", () => {
     assert.equal(init.status, 0, init.stderr);
     assert.deepEqual(JSON.parse(readFileSync(join(configDir, "settings.json"), "utf8")), { mode: "local", ownerName: "Ana" });
     assert.match(readFileSync(join(configDir, "agents.json"), "utf8"), /"id": "claude"/);
-    assert.equal(statSync(join(home, "secrets")).mode & 0o777, 0o700);
+    if (process.platform !== "win32") assert.equal(statSync(join(home, "secrets")).mode & 0o777, 0o700);
     writeFileSync(join(configDir, "agents.json"), "[]");
     const again = run("init", "--mode", "tailscale");
     assert.equal(again.status, 0, again.stderr);
@@ -144,12 +147,18 @@ describe("connectors CLI", () => {
 
   it("reads the tailnet name and login from Tailscale for tailscale mode", () => {
     const { root, configDir, runWith } = setup();
-    const fake = join(root, "tailscale");
-    writeFileSync(
-      fake,
-      `#!/bin/sh\necho '{"Self":{"DNSName":"studio.example-tailnet.ts.net.","UserID":7},"User":{"7":{"LoginName":"ana@example.com"}}}'\n`,
-    );
-    chmodSync(fake, 0o755);
+    // On Windows the fixture is a batch file, which the CLI runs through
+    // cmd.exe; elsewhere it's a shell script.
+    const fake = join(root, process.platform === "win32" ? "tailscale.cmd" : "tailscale");
+    if (process.platform === "win32") {
+      writeFileSync(fake, '@echo {"Self":{"DNSName":"studio.example-tailnet.ts.net.","UserID":7},"User":{"7":{"LoginName":"ana@example.com"}}}\r\n');
+    } else {
+      writeFileSync(
+        fake,
+        `#!/bin/sh\necho '{"Self":{"DNSName":"studio.example-tailnet.ts.net.","UserID":7},"User":{"7":{"LoginName":"ana@example.com"}}}'\n`,
+      );
+      chmodSync(fake, 0o755);
+    }
     const init = runWith({ CONNECTORS_TAILSCALE: fake }, "init", "--mode", "tailscale");
     assert.equal(init.status, 0, init.stderr);
     assert.deepEqual(JSON.parse(readFileSync(join(configDir, "settings.json"), "utf8")), {
@@ -179,7 +188,7 @@ describe("connectors CLI", () => {
     assert.equal(shown.settings.publicUrl, "http://127.0.0.1:8899");
     assert.equal(shown.settings.ownerName, "Ana");
     assert.equal(shown.files.agents, join(configDir, "agents.json"));
-    assert.match(shown.files.upstreams!, /config\/upstreams\.example\.json$/);
+    assert.match(shown.files.upstreams!, /[/\\]upstreams\.example\.json$/);
     const env = JSON.parse(runWith({ CONNECTORS_PORT: "9100" }, "settings", "--json").stdout) as { settings: { port: number } };
     assert.equal(env.settings.port, 9100);
   });

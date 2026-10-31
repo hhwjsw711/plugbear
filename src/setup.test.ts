@@ -120,7 +120,8 @@ describe("setupSteps", () => {
     assert.equal(step!.line, "Not wired yet");
     assert.equal(step!.action?.kind, "command");
     const action = step!.action as { command: string; href: string };
-    assert.equal(action.command, "scripts/install-clients.sh --only codex");
+    // The command shown matches the platform's script.
+    assert.equal(action.command, `${process.platform === "win32" ? "scripts\\install-clients.ps1" : "scripts/install-clients.sh"} --only codex`);
     assert.match(action.href, /#wire-your-agents$/);
   });
 

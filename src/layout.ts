@@ -1,6 +1,7 @@
 // Where Connectors keeps its files: everything lives under one data folder,
-// ~/Library/Application Support/Connectors by default (see docs/plan.md,
-// "Where it runs"). Tests and local runs point CONNECTORS_HOME at a temp
+// ~/Library/Application Support/Connectors on macOS and
+// %APPDATA%\Connectors on Windows (see docs/plan.md, "Where it runs").
+// Tests and local runs point CONNECTORS_HOME at a temp
 // folder.
 
 import { chmodSync, mkdirSync } from "node:fs";
@@ -36,6 +37,7 @@ export type Layout = {
 };
 
 export function defaultRoot(): string {
+  if (process.platform === "win32") return join(homedir(), "AppData", "Roaming", "Connectors");
   return join(homedir(), "Library", "Application Support", "Connectors");
 }
 
@@ -70,7 +72,9 @@ export function makeLayout(
   };
 }
 
-/** Creates the data folders. secrets/ and everything under it is 0700. */
+/** Creates the data folders. secrets/ and everything under it is 0700
+ * on macOS; on Windows the install script restricts the whole data folder
+ * to the user with an ACL instead (chmod is a no-op there). */
 export function ensureLayout(layout: Layout): void {
   mkdirSync(layout.root, { recursive: true, mode: 0o700 });
   for (const dir of [layout.secrets, layout.oauthDir]) {

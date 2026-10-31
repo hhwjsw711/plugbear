@@ -156,7 +156,8 @@ describe("Gmail and Google Calendar", () => {
 
     assert.equal(state("gmail"), "ready");
     assert.equal(state("gcal"), "ready");
-    assert.equal(statSync(tokenFile()).mode & 0o777, 0o600);
+    // Windows ignores the mode bits; the install script uses an ACL there.
+    if (process.platform !== "win32") assert.equal(statSync(tokenFile()).mode & 0o777, 0o600);
     const stored = JSON.parse(readFileSync(tokenFile(), "utf8"));
     assert.ok(stored.refreshToken && stored.accessToken);
     assert.equal(stored.email, FAKE_EMAIL);

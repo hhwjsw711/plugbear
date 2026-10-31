@@ -36,7 +36,9 @@ describe("agent tokens", () => {
     const text = readFileSync(path, "utf8");
     assert.ok(!text.includes(token));
     assert.ok(text.includes(hashToken(token)));
-    assert.equal(statSync(path).mode & 0o777, 0o600);
+    // The 0600 check is a macOS thing: Windows ignores the mode bits, and
+    // the install script restricts the data folder with an ACL instead.
+    if (process.platform !== "win32") assert.equal(statSync(path).mode & 0o777, 0o600);
   });
 
   it("verify by hash and reject everything else", () => {

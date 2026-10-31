@@ -114,8 +114,8 @@ describe("upstream OAuth sign-in", () => {
     const replay = await fetch(callback, { headers: adminHeaders(), redirect: "manual" });
     assert.equal(replay.status, 400);
 
-    // Tokens are stored by issuer in a 0600 file.
-    assert.equal(statSync(tokenFile()).mode & 0o777, 0o600);
+    // Tokens are stored by issuer in a 0600 file (an ACL on Windows).
+    if (process.platform !== "win32") assert.equal(statSync(tokenFile()).mode & 0o777, 0o600);
     const stored = JSON.parse(readFileSync(tokenFile(), "utf8"));
     assert.equal(stored.currentIssuer, fake.origin);
     assert.ok(stored.tokens[fake.origin].access_token);

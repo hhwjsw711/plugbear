@@ -75,7 +75,10 @@ describe("config files", () => {
   it("names the file that's wrong", () => {
     const configDir = emptyConfigDir();
     writeFileSync(join(configDir, "policy.json"), "{ not json");
-    assert.throws(() => loadConfig({ configDir, examplesDir }), new RegExp(`${join(configDir, "policy.json")} isn't valid JSON`));
+    assert.throws(
+      () => loadConfig({ configDir, examplesDir }),
+      (error: unknown) => error instanceof Error && error.message.includes(`${join(configDir, "policy.json")} isn't valid JSON`),
+    );
     writeFileSync(join(configDir, "policy.json"), JSON.stringify({ rules: [{ tool: "*", action: "maybe" }] }));
     assert.throws(() => loadConfig({ configDir, examplesDir }), /policy\.json is not valid/);
   });

@@ -34,6 +34,10 @@ import { TokenExistsError, issueToken, readAgentSecrets, removeToken } from "./t
 import type { UpstreamStatus } from "./upstreams.ts";
 import { VERSION } from "./version.ts";
 
+// The default data folder, as the help text shows it.
+const DEFAULT_HOME_FOR_HELP =
+  process.platform === "win32" ? "%APPDATA%\\Connectors" : "~/Library/Application Support/Connectors";
+
 const HELP = `connectors ${VERSION}: one MCP gateway for every agent
 
 Usage:
@@ -49,7 +53,7 @@ Usage:
   connectors status [--json]      Show the running server's upstreams, approvals and recent calls
 
 Options for every command:
-  --home DIR        Data folder (default ~/Library/Application Support/Connectors, or CONNECTORS_HOME)
+  --home DIR        Data folder (default ${DEFAULT_HOME_FOR_HELP}, or CONNECTORS_HOME)
   --config-dir DIR  Config folder (default DIR/config, or CONNECTORS_CONFIG_DIR). Files missing
                     there come from the examples that ship with the app.
 
@@ -76,15 +80,33 @@ const TAILSCALE_CANDIDATES = [
   "/Applications/Tailscale.app/Contents/MacOS/Tailscale",
   "/opt/homebrew/bin/tailscale",
   "/usr/local/bin/tailscale",
+  ...(process.platform === "win32" ? ["C:\\Program Files\\Tailscale\\tailscale.exe"] : []),
   "tailscale",
 ];
+
+// Windows can't exec a .cmd or .bat directly, so those go through cmd.exe.
+// The /S form with outer quotes is the one whose strip-quote rules keep the
+// inner path quoted, so spaces in it survive; windowsVerbatimArguments stops
+// Node from adding its own \\-escaped quoting on top.
+function runCandidate(file: string, args: string[], timeoutMs: number): string {
+  if (process.platform === "win32" && /\.(cmd|bat)$/i.test(file)) {
+    const com = process.env.ComSpec ?? "cmd.exe";
+    return execFileSync(com, ["/d", "/s", "/c", `""${file}" ${args.join(" ")}"`], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+      timeout: timeoutMs,
+      windowsVerbatimArguments: true,
+    });
+  }
+  return execFileSync(file, args, { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], timeout: timeoutMs });
+}
 
 /** This machine's tailnet name and Tailscale login, from `tailscale status --json`. */
 export function tailscaleIdentity(env: NodeJS.ProcessEnv = process.env): { dnsName: string; login: string | null } | null {
   const candidates = env.CONNECTORS_TAILSCALE ? [env.CONNECTORS_TAILSCALE] : TAILSCALE_CANDIDATES;
   for (const candidate of candidates) {
     try {
-      const out = execFileSync(candidate, ["status", "--json"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], timeout: 5000 });
+      const out = runCandidate(candidate, ["status", "--json"], 5000);
       const status = JSON.parse(out) as {
         Self?: { DNSName?: string; UserID?: number };
         User?: Record<string, { LoginName?: string }>;
@@ -171,7 +193,13 @@ async function openCommand(layout: Layout, path: string | undefined, print: bool
     process.stdout.write(`${url.toString()}\n`);
     return 0;
   }
-  execFileSync("/usr/bin/open", [url.toString()], { stdio: "ignore" });
+  // rundll32 passes the URL through as one argument, so & and ? in it
+  // can't be read as cmd separators (cmd /c start would lose them).
+  if (process.platform === "win32") {
+    execFileSync("rundll32", ["url.dll,FileProtocolHandler", url.toString()], { stdio: "ignore" });
+  } else {
+    execFileSync("/usr/bin/open", [url.toString()], { stdio: "ignore" });
+  }
   stderr(`Opened ${new URL(target, settings.publicUrl).toString()}`);
   return 0;
 }
