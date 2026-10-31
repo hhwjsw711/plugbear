@@ -4,6 +4,7 @@ dist/
 .env
 .env.*
 .DS_Store
+.temp/
 release.json
 # An install's own config lives in its data folder; only examples belong here.
 config/*.json
