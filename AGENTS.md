@@ -13,7 +13,9 @@ before changing anything; it's the spec. The README is the user guide.
 - Never print, log or commit a secret (agent tokens, OAuth tokens, client
   secrets, the admin key, the ntfy topic). Show names and paths only.
   Secrets live in `<data folder>/secrets/` (default
-  `~/Library/Application Support/Connectors/secrets/`), mode 0600/0700.
+  `~/Library/Application Support/Connectors/secrets/` on macOS, mode
+  0600/0700; `%APPDATA%\Connectors\secrets\` on Windows, restricted to the
+  current user with an ACL).
 - Nothing personal in the repo: an install's own settings, agents,
   upstreams and policy live in `<data folder>/config/`, never in `config/`
   (which only has the `*.example.json` files). Tests, docs and examples use
@@ -25,3 +27,5 @@ before changing anything; it's the spec. The README is the user guide.
   dashes.
 - Keep the process small (the heap is capped at 384 MB): gateway machines
   are often shared with other services.
+
+> AI生成

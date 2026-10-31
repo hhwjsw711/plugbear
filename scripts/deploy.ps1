@@ -177,7 +177,19 @@ function Get-Task([string]$TaskLabel) {
 }
 
 function Restart-Gateway([string]$TaskLabel, [int]$GatewayPort) {
+  # The task runs its command through wscript, which starts it with no
+  # console window. An action on cmd.exe put one on the desktop, where a
+  # Ctrl+C killed the gateway with 0xC000013A and the scheduler never
+  # brought it back (checked 31 Oct 2026); the loop in the script restarts
+  # it whatever way it stops, like the Mac script's launchd KeepAlive.
+  $Wscript = Join-Path $env:windir 'System32\wscript.exe'
+  $HiddenScript = Join-Path $Data 'bin\run-hidden.vbs'
   $task = Get-Task $TaskLabel
+  if ($task -and (@($task.Actions)[0].Execute -ne $Wscript)) {
+    # An earlier registration ran cmd.exe as the action; take it out.
+    Unregister-ScheduledTask -TaskName $TaskLabel -Confirm:$false
+    $task = $null
+  }
   if (-not $task) {
     Say "Registering the scheduled task $TaskLabel"
     $node = Join-Path $Data 'bin\node.exe'
@@ -186,10 +198,19 @@ function Restart-Gateway([string]$TaskLabel, [int]$GatewayPort) {
     # Sentry if settings.json has a DSN (src/sentry.ts); only this task sets
     # it, so tests and dev runs never report.
     $command = 'set "NODE_ENV=production"&& ' + '"' + $node + '" --max-old-space-size=384 "' + $cli + '" serve --home "' + $Data + '" >> "' + $LogFile + '" 2>&1'
-    $action = New-ScheduledTaskAction -Execute $env:ComSpec -Argument "/d /c $command" -WorkingDirectory $Data
-    # The trigger is this user's logon only, like the Mac script's
-    # LaunchAgent: a trigger for any user's logon won't register without an
-    # elevated shell.
+    $body = @(
+      'Written by scripts/deploy.ps1. Runs the gateway with no console',
+      'window and brings it back whatever way it stops. Stopping the',
+      'scheduled task stops this script and the gateway with it.',
+      'Dim shell',
+      'Set shell = CreateObject("WScript.Shell")',
+      'Do',
+      '  shell.Run "cmd.exe /d /c ' + ($command -replace '"', '""') + '", 0, True',
+      '  WScript.Sleep 5000',
+      'Loop'
+    ) -join "`r`n"
+    [System.IO.File]::WriteAllText($HiddenScript, $body, (New-Object System.Text.ASCIIEncoding))
+    $action = New-ScheduledTaskAction -Execute $Wscript -Argument ('"' + $HiddenScript + '"') -WorkingDirectory $Data
     $trigger = New-ScheduledTaskTrigger -AtLogOn -User ([System.Security.Principal.WindowsIdentity]::GetCurrent().Name)
     $settings = New-ScheduledTaskSettingsSet -RestartCount 999 -RestartInterval (New-TimeSpan -Minutes 1) -ExecutionTimeLimit (New-TimeSpan -Seconds 0) -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable
     $principal = New-ScheduledTaskPrincipal -UserId ([System.Security.Principal.WindowsIdentity]::GetCurrent().Name) -LogonType Interactive

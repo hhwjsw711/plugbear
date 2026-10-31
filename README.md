@@ -114,8 +114,8 @@ the pinned Node 26 the installer downloads and checks, like on a Mac. The
 pieces land in the Windows places:
 
 1. the gateway is installed in `%APPDATA%\Connectors\`, with a scheduled
-task (`local.connectors`) that starts it when you log on and restarts it
-if it dies, serving `http://127.0.0.1:8795`,
+   task (`local.connectors`) that starts it with no console window when you
+   log on and brings it back if it stops, serving `http://127.0.0.1:8795`,
 2. `config\settings.json` and `config\agents.json` are written there (local
 mode),
 3. `scripts\install-clients.ps1` wires the agents that are installed,
