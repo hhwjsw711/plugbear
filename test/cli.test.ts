@@ -43,6 +43,7 @@ function setup(options: { agents?: boolean } = {}) {
     spawnSync(process.execPath, [CLI, ...args, "--home", home], {
       encoding: "utf8",
       env: { ...process.env, ...CLEAR_ENV, ...env },
+      windowsHide: true,
     });
   const run = (...args: string[]) => runWith({}, ...args);
   return { root, home, configDir, run, runWith };

@@ -112,6 +112,9 @@ function setup() {
       env,
       encoding: "utf8",
       timeout: 180000,
+      // Without a console of their own, these would flash a window on the
+      // desktop for every run of the script.
+      windowsHide: true,
     });
     return { status: result.status, all: `${result.stdout ?? ""}${result.stderr ?? ""}` };
   };
@@ -156,6 +159,7 @@ describeWin("install-clients.ps1", () => {
       env: { ...t.withoutStubs },
       encoding: "utf8",
       windowsVerbatimArguments: true,
+      windowsHide: true,
     });
     assert.equal(printed.status, 0, printed.stderr);
     assert.deepEqual(JSON.parse(printed.stdout), { Authorization: `Bearer ${t.tokens().get("codex")}` });

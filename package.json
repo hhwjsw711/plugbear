@@ -12,7 +12,7 @@
     "connectors": "dist/connectors.mjs"
   },
   "scripts": {
-    "build": "esbuild connectors=src/cli.ts google-mcp=src/google/server.ts --bundle --platform=node --format=esm --target=node26 --outdir=dist --out-extension:.js=.mjs --legal-comments=none --banner:js=\"#!/usr/bin/env node\nimport { createRequire as __connectorsCreateRequire } from 'node:module'; const require = __connectorsCreateRequire(import.meta.url);\"",
+    "build": "node scripts/lib/build.mjs",
     "typecheck": "tsc -p .",
     "test": "node --test --test-reporter=spec \"src/**/*.test.ts\" \"test/*.test.ts\"",
     "test:clients": "node test/clients/run.ts",
