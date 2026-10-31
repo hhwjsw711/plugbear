@@ -14,9 +14,9 @@ undone wait for you to approve them first, and every call is logged.
 It was called Plugboard until 30 Oct 2026. The command, the data folder and
 the code still use its first name, `connectors`.
 
-It runs on macOS, on your own Mac or on another always-on Mac reached over
-Tailscale. It keeps your tokens on that machine; nothing goes through a
-third party.
+It runs on macOS and on Windows 10 or later, on your own machine or on
+another always-on Mac reached over Tailscale. It keeps your tokens on that
+machine; nothing goes through a third party.
 
 ## Why
 
@@ -85,7 +85,7 @@ without it they say "the user".
 
 ### The admin pages in local mode
 
-The admin and approval pages only answer on this Mac, to a browser that
+The admin and approval pages only answer on this machine, to a browser that
 has signed in with `connectors open`:
 
 ```bash
@@ -98,6 +98,47 @@ opens the page with it; the page swaps it for a cookie that lasts a year.
 After that, the links agents give you (approvals, Connect pages) open
 straight away in that browser. A browser without the cookie gets a page
 telling it which `connectors open` command to run.
+
+## Windows
+
+The same install runs on Windows 10 or later, from PowerShell:
+
+```powershell
+git clone https://github.com/mikecann/plugbear.git
+cd plugbear
+scripts\install.ps1 -Owner Sam
+```
+
+You need Node.js with npm to build, any recent version; the gateway runs on
+the pinned Node 26 the installer downloads and checks, like on a Mac. The
+pieces land in the Windows places:
+
+1. the gateway is installed in `%APPDATA%\Connectors\`, with a scheduled
+task (`local.connectors`) that starts it when you log on and restarts it
+if it dies, serving `http://127.0.0.1:8795`,
+2. `config\settings.json` and `config\agents.json` are written there (local
+mode),
+3. `scripts\install-clients.ps1` wires the agents that are installed,
+4. the `connectors` command goes in `~\.local\bin` and the admin page
+opens in your browser.
+
+Agent tokens are plain files in `~\.config\connectors\tokens`, locked to
+your user with an ACL, instead of the login Keychain. Claude Code, Codex,
+Grok and Muse are wired the same way as on a Mac (`scripts\install-clients.ps1
+-DryRun` to preview); the Claude entry is written straight into
+`.claude.json` by `scripts\lib\client-config.mjs`, because PowerShell 5.1
+strips the quotes out of a JSON argument on its way to another program.
+
+Tailscale mode works on this machine only (`scripts\install.ps1 -Tailscale`);
+a gateway on another machine still wants the Mac script over ssh. Deploys
+are local too: `scripts\deploy.ps1` builds, stages, switches the `app`
+junction, restarts the scheduled task and watches `/health`, rolling back
+if the new release doesn't come up (`-Rollback` to go back by hand). Logs
+are in `%LOCALAPPDATA%\Connectors\logs\connectors.log`.
+
+To remove it: `scripts\install-clients.ps1 -Remove`, then
+`Unregister-ScheduledTask -TaskName local.connectors`, and delete
+`%APPDATA%\Connectors`.
 
 ## Wire your agents
 
@@ -477,3 +518,5 @@ server), [src/ssrf.ts](src/ssrf.ts) (outbound guard),
 ## License
 
 MIT, see [LICENSE](LICENSE).
+
+> AI生成
