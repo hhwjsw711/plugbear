@@ -24,6 +24,20 @@ import {
 } from "@modelcontextprotocol/client";
 import { StdioClientTransport, getDefaultEnvironment } from "@modelcontextprotocol/client/stdio";
 
+// The SDK's default stdio environment is a whitelist (APPDATA, PATH and
+// friends) that leaves the proxy variables out, so a stdio server behind a
+// national firewall (the built-in Google one above all) can't route its
+// requests. Forward them, plus CONNECTORS_PROXY, so an inherited proxy
+// reaches the child; NO_PROXY keeps loopback off it.
+function inheritedProxyEnv(): Record<string, string> {
+  const carried: Record<string, string> = {};
+  for (const key of ["HTTPS_PROXY", "HTTP_PROXY", "NO_PROXY", "https_proxy", "http_proxy", "no_proxy", "CONNECTORS_PROXY"]) {
+    const value = process.env[key];
+    if (value !== undefined && value !== "") carried[key] = value;
+  }
+  return carried;
+}
+
 import type {
   AgentConfig,
   GoogleUpstreamConfig,
@@ -421,7 +435,7 @@ export class UpstreamConnection {
     // Signs the account out (every upstream on it) if Google refuses the refresh token.
     await account.accessToken();
     const script = googleServerScript();
-    const env: Record<string, string> = { ...getDefaultEnvironment() };
+    const env: Record<string, string> = { ...getDefaultEnvironment(), ...inheritedProxyEnv() };
     if (this.deps.googleApiBase) env.CONNECTORS_GOOGLE_API_BASE = this.deps.googleApiBase;
     this.log.info(`${this.id}: starting the built-in Google server for ${config.service}`);
     return this.watchStderr(
@@ -464,7 +478,7 @@ export class UpstreamConnection {
   }
 
   private makeStdioTransport(config: StdioUpstreamConfig): Transport {
-    const env: Record<string, string> = { ...getDefaultEnvironment() };
+    const env: Record<string, string> = { ...getDefaultEnvironment(), ...inheritedProxyEnv() };
     for (const [key, value] of Object.entries(config.env)) {
       env[key] =
         typeof value === "string"
