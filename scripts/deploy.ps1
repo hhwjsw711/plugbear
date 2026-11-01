@@ -202,7 +202,18 @@ function Restart-Gateway([string]$TaskLabel, [int]$GatewayPort) {
   # NODE_ENV=production is what lets the gateway report its own bugs to
   # Sentry if settings.json has a DSN (src/sentry.ts); only this task sets
   # it, so tests and dev runs never report.
-  $command = 'set "NODE_ENV=production"&& ' + '"' + $node + '" --max-old-space-size=384 "' + $cli + '" serve --home "' + $Data + '" >> "' + $LogFile + '" 2>&1'
+  # HTTP(S)_PROXY, when the machine has one, is for Node's fetch (undici),
+  # which reads those variables: upstreams behind the GFW (Google's OAuth
+  # endpoints, for the built-in Gmail and Calendar) need it, while plain
+  # HTTP MCP servers don't care. CONNECTORS_PROXY overrides, and empty
+  # means none. NO_PROXY keeps loopback and the tailnet off the proxy.
+  $proxy = if ($env:CONNECTORS_PROXY) { $env:CONNECTORS_PROXY } elseif ($env:HTTPS_PROXY) { $env:HTTPS_PROXY } else { $env:HTTP_PROXY }
+  $proxyPrefix = ''
+  if ($proxy) {
+    $noProxy = if ($env:NO_PROXY) { $env:NO_PROXY } else { '127.0.0.1,localhost' }
+    $proxyPrefix = 'set "HTTPS_PROXY=' + $proxy + '"&& set "HTTP_PROXY=' + $proxy + '"&& set "NO_PROXY=' + $noProxy + '"&& '
+  }
+  $command = $proxyPrefix + 'set "NODE_ENV=production"&& ' + '"' + $node + '" --max-old-space-size=384 "' + $cli + '" serve --home "' + $Data + '" >> "' + $LogFile + '" 2>&1'
   $runLine = '  shell.Run "cmd.exe /d /c ' + ($command -replace '"', '""') + '", 0, True'
   $body = @(
     'Rem Written by scripts/deploy.ps1. Runs the gateway with no console',
