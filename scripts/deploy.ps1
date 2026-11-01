@@ -226,6 +226,21 @@ function Restart-Gateway([string]$TaskLabel, [int]$GatewayPort) {
   } else {
     Stop-ScheduledTask -TaskName $TaskLabel -ErrorAction SilentlyContinue
     Start-Sleep -Seconds 2
+    # Stopping the task ends wscript and its cmd.exe, but not the node.exe
+    # they started between them: an orphaned gateway keeps the port, and
+    # every node the restarted task starts dies on the bind, forever
+    # (checked 1 Nov 2026). Kill it here, matched on the pinned node.exe
+    # path with serve right after the CLI path (the task's form; the
+    # connectors.cmd wrapper runs `--home <dir> serve` instead), so nothing
+    # else on the machine is touched.
+    $servePattern = '*connectors.mjs" serve*'
+    $orphans = Get-CimInstance Win32_Process -Filter "Name='node.exe'" |
+      Where-Object { $_.ExecutablePath -eq (Join-Path $Data 'bin\node.exe') -and $_.CommandLine -like $servePattern }
+    foreach ($orphan in $orphans) {
+      Say "Stopping the running gateway (pid $($orphan.ProcessId))"
+      Stop-Process -Id $orphan.ProcessId -Force -ErrorAction SilentlyContinue
+    }
+    if ($orphans) { Start-Sleep -Seconds 1 }
   }
   Start-ScheduledTask -TaskName $TaskLabel
 }
