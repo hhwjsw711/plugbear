@@ -8,7 +8,7 @@
 import { lookup as dnsLookup, type LookupAddress } from "node:dns";
 import { BlockList, isIP } from "node:net";
 
-import { Agent } from "undici";
+import { Agent, EnvHttpProxyAgent } from "undici";
 
 const blocked = new BlockList();
 // IPv4
@@ -162,14 +162,26 @@ export type GuardedFetch = typeof fetch;
 /**
  * A fetch for upstream and OAuth traffic. Pass it to the MCP SDK as
  * `fetch`/`fetchFn` so every request it makes goes through the guard.
+ *
+ * HTTPS_PROXY/HTTP_PROXY/NO_PROXY (or CONNECTORS_PROXY) route requests
+ * through a local proxy when set: Node's built-in fetch doesn't read those
+ * variables (undici dropped implicit proxying), and upstreams behind a
+ * national firewall need one. The DNS guard stays in force: the proxy agent
+ * connects through a guarded lookup too, so a name can't resolve to a
+ * public address for the check and a private one for the tunnel.
  */
 export function createGuardedFetch(options: GuardOptions = {}): GuardedFetch {
-  const dispatcher = new Agent({
-    connect: { lookup: guardedLookup(options) as never },
-    // Long tool calls can sit quietly for minutes.
-    bodyTimeout: 15 * 60_000,
-    headersTimeout: 5 * 60_000,
-  });
+  const connect = { lookup: guardedLookup(options) as never };
+  const proxy =
+    process.env.CONNECTORS_PROXY ?? process.env.HTTPS_PROXY ?? process.env.HTTPS_PROXY;
+  const dispatcher = proxy
+    ? new EnvHttpProxyAgent({ connect })
+    : new Agent({
+        connect,
+        // Long tool calls can sit quietly for minutes.
+        bodyTimeout: 15 * 60_000,
+        headersTimeout: 5 * 60_000,
+      });
 
   const guarded = async (
     input: string | URL | Request,
