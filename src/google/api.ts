@@ -4,10 +4,19 @@
 // the request's _meta, and keeps the refresh token and client secret to
 // itself (see account.ts).
 
+import { setGlobalDispatcher, EnvHttpProxyAgent } from "undici";
+
 /** Where the gateway puts the access token in a tools/call's _meta. */
 export const TOKEN_META_KEY = "connectors/google-access-token";
 /** Set in a result's _meta when Google refused the token, so the gateway refreshes and retries once. */
 export const AUTH_META_KEY = "connectors/google-auth";
+
+// The stdio server inherits the gateway task's environment, so the proxy
+// variables the task sets are in force here too. Node's built-in fetch
+// doesn't read them (undici dropped implicit proxying), and Google's API
+// hosts are exactly the ones that need the proxy on some networks; without
+// one set, EnvHttpProxyAgent connects directly, as before.
+setGlobalDispatcher(new EnvHttpProxyAgent());
 
 export type GoogleService = "gmail" | "calendar";
 
