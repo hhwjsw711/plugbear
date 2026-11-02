@@ -285,7 +285,15 @@ gets the real result. If not, the agent is told to tell you and then call
 `connectors__await_approval` with the id, which waits up to 45 seconds more
 and runs the call exactly once when you approve. Unanswered approvals
 expire after 24 hours, and an approved call that no agent picks up within an
-hour expires too.
+hour expires too. Only the approval page approves a call: a reply to the agent
+doesn't, and the agent is told so.
+
+Several waiting calls to the same tool from the same agent, each within five
+minutes of the next, share a page, and every one of their links opens it. It
+shows each call in full and can approve them all with one press, or answer
+them one at a time. Calls to different tools never share a page, and past ten
+waiting calls each one goes back to its own page, since that many looks like a
+loop.
 
 For a push to your phone, pick a long random [ntfy](https://ntfy.sh) topic,
 subscribe to it in the ntfy app, and put it in `secrets/ntfy-topic` (mode
@@ -365,7 +373,9 @@ What it is careful about:
   refused. The banner only shows messages the server made, never text from
   a link.
 - What you approve. Until a held call runs, its approval page shows the
-  arguments exactly as they will be sent. Arguments with a `__proto__` key
+  arguments exactly as they will be sent, on a shared page too. Approving
+  several together only covers the calls that page showed, so one that came in
+  after you opened it keeps waiting. Arguments with a `__proto__` key
   anywhere are refused, since a JavaScript upstream could turn one into
   values you never saw.
 - Limits, so one runaway agent can't take the gateway down: 1 MB per

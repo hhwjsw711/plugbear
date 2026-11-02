@@ -93,6 +93,29 @@ describe("admin pages in a browser", () => {
     await client.close();
   });
 
+  it("approves several held calls together from one page", async (t) => {
+    if (!browser) return t.skip("no headless Chromium");
+    const client = await legacyClient(gateway, "codex");
+    const ids: string[] = [];
+    for (const to of ["ana", "ben", "kim"]) {
+      const held = await client.callTool({ name: "fake__send_message", arguments: { to, text: "hello" } });
+      ids.push(/id (ap_[A-Za-z0-9_-]+)/.exec(textOf(held))![1]!);
+    }
+    const page = await context.newPage();
+    await page.goto(`${gateway.url}/approvals/${ids[1]}`);
+    assert.equal(await page.locator("pre").count(), 3);
+    await page.getByRole("button", { name: "Approve all 3" }).click();
+    await page.waitForURL(/\/admin\?flash=/);
+    assert.match((await page.locator(".flash").textContent()) ?? "", /Approved 3 calls\./);
+    assert.deepEqual(problems, []);
+    for (const id of ids) {
+      const done = await client.callTool({ name: "connectors__await_approval", arguments: { id } });
+      assert.match(textOf(done), /^sent to /);
+    }
+    await page.close();
+    await client.close();
+  });
+
   it("turns a setup row green by itself once the step is done", async (t) => {
     if (!browser) return t.skip("no headless Chromium");
     removeToken(gateway.layout.agentsSecrets, "grok");

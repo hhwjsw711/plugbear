@@ -19,6 +19,12 @@ export const APPROVAL_TTL_MS = 24 * 60 * 60 * 1000;
 export const APPROVED_RUN_WINDOW_MS = 60 * 60 * 1000;
 // More than this many calls from one agent waiting for approval is a loop, not work.
 export const MAX_PENDING_PER_AGENT = 20;
+// Calls to one tool from one agent at most this far apart share an approval
+// page, where they can be approved together.
+export const GROUP_GAP_MS = 5 * 60 * 1000;
+// More like this than can be approved in one press: past this it looks like a
+// loop, so each one gets its own page, the way every call used to.
+export const MAX_GROUP_SIZE = 10;
 // Arguments are kept in full until the call runs; refuse to hold huge ones.
 export const MAX_APPROVAL_ARGS_BYTES = 1024 * 1024;
 // How long a finished run's result stays available to a repeated await.
@@ -161,6 +167,33 @@ export class Approvals {
   /** How many calls from this agent are waiting for approval. */
   pendingFor(agent: string): number {
     return this.pending().filter((record) => record.agent === agent).length;
+  }
+
+  /**
+   * The waiting calls close to this one: same agent, same tool, each within
+   * GROUP_GAP_MS of the next, oldest first, this one included. Only the tool
+   * matches, never just the agent, so a send can't sit in a list of harmless
+   * deletes and get waved through with them. Read from the database each
+   * time, so groups need no state of their own and survive a restart.
+   */
+  waitingWith(record: ApprovalRecord): ApprovalRecord[] {
+    const calls = [
+      ...this.pending().filter(
+        (other) => other.agent === record.agent && other.tool === record.tool && other.id !== record.id,
+      ),
+      record,
+    ].sort((a, b) => a.createdAt - b.createdAt);
+    let start = calls.indexOf(record);
+    let end = start;
+    while (start > 0 && calls[start]!.createdAt - calls[start - 1]!.createdAt <= GROUP_GAP_MS) start -= 1;
+    while (end < calls.length - 1 && calls[end + 1]!.createdAt - calls[end]!.createdAt <= GROUP_GAP_MS) end += 1;
+    return calls.slice(start, end + 1);
+  }
+
+  /** The calls this one's page offers to approve together; itself alone if there are too many. */
+  group(record: ApprovalRecord): ApprovalRecord[] {
+    const calls = this.waitingWith(record);
+    return calls.length <= MAX_GROUP_SIZE ? calls : [record];
   }
 
   /**

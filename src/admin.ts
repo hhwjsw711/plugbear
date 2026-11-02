@@ -455,6 +455,8 @@ export type ApprovalView = {
   upstreamTitle: string;
   csrf: string;
   now: number;
+  // How many calls like this are waiting, when that's too many for one page.
+  tooManyToGroup?: number;
 };
 
 function approvalStatus(record: ApprovalRecord): string {
@@ -519,7 +521,60 @@ ${record.note ? html`<dt>Your note</dt><dd>${record.note}</dd>` : ""}
       : "As kept in the call log: secret-looking values are hidden and long ones are cut."
 }</p>
 <pre>${prettyArgs(record.argsJson)}</pre>
+${
+  view.tooManyToGroup
+    ? html`<p class="muted">${view.tooManyToGroup} calls like this are waiting. That's too many to approve together, so each one has its own page.</p>`
+    : ""
+}
 ${form}`,
+  );
+}
+
+export type ApprovalGroupView = {
+  records: ApprovalRecord[];
+  agentTitle: string;
+  upstreamTitle: string;
+  csrf: (action: string) => string;
+  // Covers exactly the calls on this page, see POST /approvals/batch.
+  batchCsrf: string;
+};
+
+/**
+ * Several waiting calls on one page. It keeps the promise of the single page:
+ * every call's full arguments are out in the open, nothing folded or cut, and
+ * the buttons that answer them all come after the last one.
+ */
+export function approvalGroupPage(view: ApprovalGroupView): string {
+  const { records } = view;
+  const count = records.length;
+  const tool = records[0]!.tool;
+  const calls = records.map(
+    (record, index) => html`<h2>Call ${index + 1} of ${count}, asked ${formatTime(record.createdAt)}</h2>
+<pre>${prettyArgs(record.argsJson)}</pre>
+<form class="actions" method="post" action="/approvals/${encodeURIComponent(record.id)}">
+<input type="hidden" name="csrf" value="${view.csrf(`approval:${record.id}`)}">
+<button type="submit" name="action" value="approve">Approve this one</button>
+<button type="submit" name="action" value="deny" class="danger">Deny this one</button>
+</form>`,
+  );
+  return page(
+    `Approve ${count} ${tool} calls?`,
+    html`<h1>${view.agentTitle} wants to run ${tool} ${count} times</h1>
+<div class="card panel"><dl style="margin: 0">
+<dt>Agent</dt><dd>${view.agentTitle} (${records[0]!.agent})</dd>
+<dt>Service</dt><dd>${view.upstreamTitle}</dd>
+<dt>Tool</dt><dd><code>${tool}</code></dd>
+</dl></div>
+<p class="muted" style="margin-top: 1rem">Below is exactly what the agent will send for each one if you approve. Several threads can share one agent, so check they all belong to the job you expect.</p>
+${calls}
+<form class="card decide" method="post" action="/approvals/batch">
+<input type="hidden" name="csrf" value="${view.batchCsrf}">
+<input type="hidden" name="ids" value="${records.map((record) => record.id).join(",")}">
+<label for="note">Note for the agent (optional)</label><textarea id="note" name="note" maxlength="2000"></textarea>
+<p class="muted small">This answers the ${count} calls above. Any that came in after you opened this page keep waiting.</p>
+<div class="actions"><button type="submit" name="action" value="approve" class="primary">Approve all ${count}</button>
+<button type="submit" name="action" value="deny" class="danger">Deny all ${count}</button></div>
+</form>`,
   );
 }
 

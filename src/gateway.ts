@@ -433,12 +433,22 @@ export class Gateway {
   /** Turns an approval's state into what the agent sees. */
   private async settle(ctx: CallContext, record: ApprovalRecord): Promise<ToolResult> {
     switch (record.status) {
-      case "pending":
+      case "pending": {
+        const others = this.deps.approvals.group(record).length - 1;
+        // Agents built a card with an "Approved" answer that did nothing, and
+        // the owner pressed it instead of opening the page. So say what does
+        // and doesn't count, and what to label such an answer.
         return textResult(
           `Waiting for ${this.owner.name} to approve this at ${this.approvalUrl(record.id)}. ` +
-            `Tell ${this.owner.name}, then call ${builtinName("await_approval", ctx.agent.toolSeparator)} with id ${record.id}. ` +
+            (others
+              ? `That page also shows ${others} more of your ${record.tool} calls waiting, so ${this.owner.name} can approve them together and needs only one link. `
+              : "") +
+            `Only that page approves it: a reply or an answer on a card or button doesn't, so don't offer an "Approved" answer. ` +
+            `Give ${this.owner.name} the link, and if you need an answer, label it "I've approved it" and check before carrying on. ` +
+            `To check, call ${builtinName("await_approval", ctx.agent.toolSeparator)} with id ${record.id}. ` +
             "Don't try to approve it yourself.",
         );
+      }
       case "declined":
         return textResult(
           `${this.owner.Name} declined this call.${record.note ? ` ${this.owner.Name}'s note: ${record.note}` : ""}`,

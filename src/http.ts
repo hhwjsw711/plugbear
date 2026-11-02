@@ -20,9 +20,9 @@ import type { McpHttpHandler } from "@modelcontextprotocol/server";
 import { Hono, type Context } from "hono";
 import { getCookie, setCookie } from "hono/cookie";
 
-import { SETUP_SCRIPT_HASH, adminPage, approvalPage, callsPage, connectPage, messagePage } from "./admin.ts";
+import { SETUP_SCRIPT_HASH, adminPage, approvalGroupPage, approvalPage, callsPage, connectPage, messagePage } from "./admin.ts";
 import { upstreamsFor } from "./access.ts";
-import type { Approvals } from "./approvals.ts";
+import { type Approvals, MAX_GROUP_SIZE } from "./approvals.ts";
 import type { Config } from "./config.ts";
 import type { Csrf } from "./csrf.ts";
 import type { Store } from "./db.ts";
@@ -558,17 +558,58 @@ export function createApp(deps: AppDeps): Hono<Env> {
     }
   });
 
+  // Several calls approved with one press. The form names the calls its page
+  // showed and its CSRF token covers that exact list, so a call that came in
+  // after the page loaded can't be swept up: it stays waiting, on the admin
+  // page this lands on. decide() still refuses any that were decided or
+  // expired in the meantime.
+  app.post("/approvals/batch", async (c) => {
+    const form = await c.req.parseBody();
+    const list = typeof form.ids === "string" ? form.ids : "";
+    const fields = await checkCsrf(c, `approvals:${list}`);
+    if (!fields || !list) return c.text("Bad or missing CSRF token\n", 403);
+    const action = fields.action;
+    if (action !== "approve" && action !== "deny") return c.text("Choose approve or deny\n", 400);
+    const ids = list.split(",");
+    const decided = ids.filter(
+      (id) => deps.approvals.decide(id, action === "approve" ? "approved" : "declined", fields.note).ok,
+    ).length;
+    const skipped = ids.length - decided;
+    const text =
+      (action === "approve"
+        ? `Approved ${decided} ${decided === 1 ? "call" : "calls"}. The agent runs each one when it next checks.`
+        : `Declined ${decided} ${decided === 1 ? "call" : "calls"}.`) +
+      (skipped ? ` ${skipped} had already been answered or had expired, so ${skipped === 1 ? "it" : "they"} didn't change.` : "");
+    return c.redirect(`/admin?flash=${flashes.put(text, false, now())}`, 303);
+  });
+
   app.get("/approvals/:id", (c) => {
     const record = deps.approvals.get(c.req.param("id"));
     if (!record) return htmlResponse(c, messagePage("Not found", "There's no approval with that id."), 404);
+    const agentTitle = deps.gateway.agent(record.agent)?.title ?? record.agent;
+    const upstreamTitle = deps.manager.get(record.upstream)?.config.title ?? record.upstream;
+    const waiting = record.status === "pending" ? deps.approvals.waitingWith(record) : [record];
+    if (waiting.length > 1 && waiting.length <= MAX_GROUP_SIZE) {
+      return htmlResponse(
+        c,
+        approvalGroupPage({
+          records: waiting,
+          agentTitle,
+          upstreamTitle,
+          csrf: csrfFor(c),
+          batchCsrf: csrfFor(c)(`approvals:${waiting.map((call) => call.id).join(",")}`),
+        }),
+      );
+    }
     return htmlResponse(
       c,
       approvalPage({
         record,
-        agentTitle: deps.gateway.agent(record.agent)?.title ?? record.agent,
-        upstreamTitle: deps.manager.get(record.upstream)?.config.title ?? record.upstream,
+        agentTitle,
+        upstreamTitle,
         csrf: csrfFor(c)(`approval:${record.id}`),
         now: now(),
+        tooManyToGroup: waiting.length > 1 ? waiting.length : undefined,
       }),
     );
   });
@@ -579,11 +620,15 @@ export function createApp(deps: AppDeps): Hono<Env> {
     if (!fields) return c.text("Bad or missing CSRF token\n", 403);
     const action = fields.action;
     if (action !== "approve" && action !== "deny") return c.text("Choose approve or deny\n", 400);
+    const before = deps.approvals.get(id);
+    const others = before?.status === "pending" ? deps.approvals.waitingWith(before).filter((call) => call.id !== id) : [];
     const result = deps.approvals.decide(id, action === "approve" ? "approved" : "declined", fields.note);
     if (!result.ok && result.reason === "not_found") {
       return htmlResponse(c, messagePage("Not found", "There's no approval with that id."), 404);
     }
-    return c.redirect(`/approvals/${encodeURIComponent(id)}`, 303);
+    // On to the next one like it, so answering one doesn't lose the rest.
+    const next = result.ok ? (others[0]?.id ?? id) : id;
+    return c.redirect(`/approvals/${encodeURIComponent(next)}`, 303);
   });
 
   app.notFound((c) => c.text("Not found\n", 404));

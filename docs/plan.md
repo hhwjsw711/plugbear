@@ -370,9 +370,9 @@ this app" screen, which stays, since it's the owner's own unverified app.
      return an error result: "<Owner> declined this call." with their note
      if any.
   4. If still pending, return a normal (non-error) text result: "Waiting for
-     <owner> to approve this at <url>. Tell <owner>, then call
-     connectors__await_approval with id <id>. Don't try to approve it
-     yourself." The approval id is bound to the agent that made the call.
+     <owner> to approve this at <url>", that only the page approves it, not a
+     reply or a card answer, then "call connectors__await_approval with id
+     <id>. Don't try to approve it yourself." The approval id is bound to the agent that made the call.
      Added after review: that result has no structured content, which
      Claude Code and the MCP SDK clients reject for a tool that declared an
      `outputSchema`. So `tools/list` drops `outputSchema` from any tool the
@@ -401,6 +401,20 @@ this app" screen, which stays, since it's the owner's own unverified app.
   afterwards only the call log's redacted copy is kept. Arguments with a
   `__proto__` key anywhere are refused before the policy runs (a JavaScript
   upstream merging them could pick up values the owner never saw).
+- Added 2 Nov: approving several at once. Three held Notion deletes meant three
+  pages, and an agent's "Approved" card answer that did nothing. `/approvals/<id>`
+  now shows every waiting call with the same agent and tool, each within 5
+  minutes of the next, and can approve them with one press
+  (`POST /approvals/batch`). Why it doesn't weaken approvals: every call's full
+  arguments stay on the page; the form names the calls it showed and its CSRF
+  token covers that exact list, so a later call can't be swept in; decide() and
+  the run-once claim still apply to each call; grouping by tool stops a send
+  hiding among deletes; over 10 waiting calls, each goes back to its own page,
+  because one press shouldn't approve a loop. The gateway can't tell threads
+  apart (they share an agent id), so the page says to check they belong
+  together. Groups are worked out from the approvals table on each load, so a
+  restart loses nothing. Pushes stay one per call: each is a warning that
+  something new is waiting.
 - Threat model, written down in the README: the gateway protects against an
   agent sending something by mistake. It does not protect against a rogue
   program running as the owner on the agents' Mac, which can read tokens
