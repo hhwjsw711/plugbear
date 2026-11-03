@@ -126,6 +126,13 @@ a.btn.plain:hover { background: var(--soft); }
 details.how summary { font-size: 0.9rem; padding: 0.35rem 0.9rem; border-radius: 8px; border: 1px solid var(--line); background: var(--card); color: var(--text); }
 details.how summary:hover { background: var(--soft); }
 details.how .tip { width: min(27rem, 85vw); top: 2.4rem; }
+.email, .args { padding: 1rem 1.25rem; margin: 0.5rem 0; }
+.email dl, .args dl { margin: 0; }
+.email .body { border-top: 1px solid var(--line); margin-top: 0.9rem; padding-top: 0.9rem; }
+.text { white-space: pre-wrap; overflow-wrap: anywhere; }
+.args dd pre { margin: 0; max-height: 40vh; }
+details.raw { margin: 0.4rem 0 1rem; }
+details.raw summary { cursor: pointer; color: var(--muted); font-size: 0.85rem; }
 details.how pre { margin: 0.5rem 0; padding: 0.6rem 0.75rem; white-space: pre; overflow-x: auto; }
 @media (max-width: 640px) { .list > li { flex-wrap: wrap; } table { display: block; overflow-x: auto; } }
 `;
@@ -488,6 +495,68 @@ function prettyArgs(argsJson: string): string {
   }
 }
 
+function parseObject(argsJson: string): Record<string, unknown> | undefined {
+  try {
+    const value: unknown = JSON.parse(argsJson);
+    return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+const isStringList = (value: unknown): value is string[] =>
+  Array.isArray(value) && value.every((item) => typeof item === "string");
+
+// One argument as a row. Strings show as text with their real line breaks
+// (a JSON string hides an email body behind \n escapes); anything else stays
+// as JSON. An empty string still gets a row, so nothing passes unseen.
+function argRow(key: string, value: unknown): Html {
+  const shown =
+    typeof value === "string"
+      ? value === ""
+        ? html`<span class="muted">(empty)</span>`
+        : html`<div class="text">${value}</div>`
+      : html`<pre>${JSON.stringify(value, null, 2)}</pre>`;
+  return html`<dt><code>${key}</code></dt><dd>${shown}</dd>`;
+}
+
+const EMAIL_HEADERS: [key: string, label: string][] = [
+  ["to", "To"],
+  ["cc", "Cc"],
+  ["bcc", "Bcc"],
+  ["subject", "Subject"],
+  ["replyToMessageId", "In reply to"],
+];
+
+// Gmail's send_message and create_draft, shaped like an email so the owner
+// reads what the recipient will. Only when every argument fits that shape;
+// otherwise it falls back to the generic rows rather than guess.
+function emailView(args: Record<string, unknown>): Html | undefined {
+  const known = new Set(["body", ...EMAIL_HEADERS.map(([key]) => key)]);
+  if (typeof args.body !== "string" || !isStringList(args.to)) return undefined;
+  for (const [key, value] of Object.entries(args)) {
+    if (!known.has(key)) return undefined;
+    if (key !== "body" && !(typeof value === "string" || isStringList(value))) return undefined;
+  }
+  const rows = EMAIL_HEADERS.filter(([key]) => key in args).map(([key, label]) => {
+    const value = args[key] as string | string[];
+    const text = Array.isArray(value) ? value.join(", ") : value;
+    return html`<dt>${label}</dt><dd>${text === "" ? html`<span class="muted">(empty)</span>` : text}</dd>`;
+  });
+  return html`<div class="card email"><dl>${rows}</dl><div class="text body">${args.body}</div></div>`;
+}
+
+/** A call's arguments, readable first, with the exact JSON one click away. */
+function argsView(argsJson: string, upstreamTool: string): Html {
+  const raw = html`<pre>${prettyArgs(argsJson)}</pre>`;
+  const args = parseObject(argsJson);
+  if (!args || Object.keys(args).length === 0) return raw;
+  const readable =
+    (upstreamTool === "send_message" || upstreamTool === "create_draft" ? emailView(args) : undefined) ??
+    html`<div class="card args"><dl>${Object.entries(args).map(([key, value]) => argRow(key, value))}</dl></div>`;
+  return html`${readable}<details class="raw"><summary>Raw arguments</summary>${raw}</details>`;
+}
+
 export function approvalPage(view: ApprovalView): string {
   const { record } = view;
   const pending = record.status === "pending" && record.expiresAt > view.now;
@@ -520,7 +589,7 @@ ${record.note ? html`<dt>Your note</dt><dd>${record.note}</dd>` : ""}
       ? "Exactly what will be sent when the agent picks it up."
       : "As kept in the call log: secret-looking values are hidden and long ones are cut."
 }</p>
-<pre>${prettyArgs(record.argsJson)}</pre>
+${argsView(record.argsJson, record.upstreamTool)}
 ${
   view.tooManyToGroup
     ? html`<p class="muted">${view.tooManyToGroup} calls like this are waiting. That's too many to approve together, so each one has its own page.</p>`
@@ -550,7 +619,7 @@ export function approvalGroupPage(view: ApprovalGroupView): string {
   const tool = records[0]!.tool;
   const calls = records.map(
     (record, index) => html`<h2>Call ${index + 1} of ${count}, asked ${formatTime(record.createdAt)}</h2>
-<pre>${prettyArgs(record.argsJson)}</pre>
+${argsView(record.argsJson, record.upstreamTool)}
 <form class="actions" method="post" action="/approvals/${encodeURIComponent(record.id)}">
 <input type="hidden" name="csrf" value="${view.csrf(`approval:${record.id}`)}">
 <button type="submit" name="action" value="approve">Approve this one</button>
