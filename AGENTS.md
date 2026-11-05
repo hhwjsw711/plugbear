@@ -20,7 +20,9 @@ before changing anything; it's the spec. The README is the user guide.
   made-up names (Sam, Ana, studio, example.com).
 - Never pass an inbound token upstream, never act as an OAuth server, and only
   call configured upstream URLs.
-- Run on Node 26 (`node:sqlite` truncates text at NUL on older versions).
+- Run on Node 26 (`node:sqlite` truncates text at NUL on older versions, and
+  the built-in fetch on Node 24 fails 36 tests). `.nvmrc` pins it, and
+  `npm test` stops early on an older Node.
 - Admin and approval pages: plain copy, no eyebrow or kicker labels, no em
   dashes.
 - Keep the process small (the heap is capped at 384 MB): gateway machines
