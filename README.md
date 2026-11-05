@@ -338,6 +338,25 @@ Tools: `gmail__search_threads`, `get_thread`, `get_message`, `list_labels`,
 `list_events`, `get_event`, `create_event` and `update_event` (ask you when
 there are guests).
 
+## Slack (through Codex)
+
+The gateway has no Slack upstream: a work Slack usually needs an admin to
+approve a custom app. If Codex's Slack app is signed in on the same Mac,
+`bin/slack-read` borrows it instead, so any agent can read Slack from a
+shell:
+
+```sh
+ln -s "$PWD/bin/slack-read" ~/.local/bin/slack-read
+slack-read https://example.slack.com/archives/C123/p1700000000000000
+slack-read "what did Sam say about the launch date?"
+```
+
+It runs a one-off `codex exec` (about 30 seconds) and prints the thread with
+names and times, or an answer with links. It can only read: Codex's app
+approval mode is set to `auto`, which runs read-only tools and asks before
+anything else, and `codex exec` can't ask, so Codex refuses every send,
+reaction, edit or upload itself.
+
 ## Security model
 
 What it protects against: an agent sending something by mistake. An email,

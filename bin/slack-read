@@ -1,0 +1,80 @@
+#!/bin/zsh
+# slack-read: read Slack through Codex's Slack app, for agents that have no Slack connector.
+#
+#   slack-read <slack link>          the message or thread, every reply, with names and times
+#   slack-read <question>            searches Slack and answers with links
+#   slack-read <link> <question>     answers a question about that thread
+#
+# Why this exists: Connectors has no Slack upstream, because a work Slack usually
+# needs an admin to approve a custom app. Codex's own Slack app is already signed
+# in, so this asks a one-off `codex exec` to do the reading and prints its answer.
+#
+# It can't post. Codex's app approval mode "auto" runs read-only tools by itself
+# and asks before anything else; `codex exec` never asks, so every write (send,
+# react, edit, upload, join) is refused by Codex itself, whatever the prompt says.
+# The shell sandbox is read-only too.
+
+emulate -L zsh
+setopt pipe_fail
+
+if [[ $# -eq 0 || $1 == -h || $1 == --help ]]; then
+  sed -n '2,8p' $0 | sed 's/^# \{0,1\}//'
+  exit 0
+fi
+
+command -v codex >/dev/null || { print -u2 "slack-read: codex isn't installed"; exit 1; }
+
+# Codex names its Slack app by an id that differs per install, so find it in
+# Codex's cached app tool list rather than hard-coding it.
+app_id=$(python3 -I - <<'EOF'
+import glob, json, os
+files = sorted(glob.glob(os.path.expanduser('~/.codex/cache/codex_apps_tools/*.json')), key=os.path.getmtime, reverse=True)
+for f in files:
+    try:
+        data = json.load(open(f))
+    except Exception:
+        continue
+    # The cache's nesting has changed between Codex versions, so search all of it.
+    stack = [data]
+    while stack:
+        o = stack.pop()
+        if isinstance(o, dict):
+            if o.get('connector_name') == 'Slack' and o.get('connector_id'):
+                print(o['connector_id'])
+                raise SystemExit
+            stack.extend(o.values())
+        elif isinstance(o, list):
+            stack.extend(o)
+EOF
+)
+[[ -n $app_id ]] || { print -u2 "slack-read: couldn't find Codex's Slack app. Is the Slack plugin on in Codex?"; exit 1; }
+
+work=$(mktemp -d -t slack-read)
+trap 'rm -rf $work' EXIT
+
+cat > $work/brief.md <<EOF
+Use your Slack app to answer this. It's for another agent that can't reach Slack.
+
+Request: $*
+
+- For a Slack link, read that message and, if it has a thread, every reply. Print them verbatim, one per message, as "Name (date, time in Australia/Perth): text". Use real names, not user IDs, and turn <@U…> mentions into @Name. Then list any attachments with their names and Slack links.
+- For a question, search Slack and answer briefly, with a permalink for each message you rely on.
+- Read only. Don't post, react, edit, upload, join or change anything in Slack, and don't touch any files.
+- If something can't be read, say exactly what and why. No sign-off or follow-up offers.
+EOF
+
+# _default covers any other app Codex reaches for, so they're read-only too.
+timeout ${SLACK_READ_TIMEOUT:-300} codex exec \
+  -s read-only --skip-git-repo-check -C $work \
+  -c 'model_reasoning_effort="low"' \
+  -c 'apps._default.default_tools_approval_mode="auto"' \
+  -c "apps.$app_id.default_tools_approval_mode=\"auto\"" \
+  -o $work/out.md - < $work/brief.md > $work/log 2>&1
+code=$?
+
+if [[ $code -ne 0 || ! -s $work/out.md ]]; then
+  print -u2 "slack-read: codex exited $code. Last of its log:"
+  tail -20 $work/log >&2
+  exit 1
+fi
+cat $work/out.md; print
